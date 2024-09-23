@@ -4,7 +4,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "Jr_v03.h"
+#include "Jr_v06.h"
 using namespace std;
 
 string version = "5.04";
