@@ -7,7 +7,7 @@
 #include "Jr_v03.h"
 using namespace std;
 
-string version = "5.03";
+string version = "5.04";
 
 
 int main(int argc, char** argv)
