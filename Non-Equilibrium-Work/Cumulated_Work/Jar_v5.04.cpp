@@ -146,6 +146,7 @@ int main(int argc, char** argv)
 	deallocate(z3);
 	deallocate(f);
 	deallocate(w);
+	deallocate(z1avg);
 	deallocate(gExp);
 	deallocate(gSec);
 	deallocate(wAvg);
