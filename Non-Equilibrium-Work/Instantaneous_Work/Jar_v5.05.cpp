@@ -40,14 +40,17 @@ int main(int argc, char** argv)
 	df.numSims = numSims;
 	df.numDirs = numDirs;
 	df.numData = numData;
-	
-	
 
-	string z1file = "z1s.txt";
-	string z2file = "z2s.txt";
-	string z3file = "z3s.txt";
-	string ffile = "fs.txt";
-	string wfile = "ws.txt";
+
+	/* ----------------------------------------------------------------
+
+       ---------------------------------------------------------------- */
+	
+	string z1file = "z1s-Ins.txt";
+	string z2file = "z2s-Ins.txt";
+	string z3file = "z3s-Ins.txt";
+	string ffile = "fs-Ins.txt";
+	string wfile = "ws-Ins.txt";
 
 	string z1name = "z1";
 	string z2name = "z2";
@@ -55,9 +58,9 @@ int main(int argc, char** argv)
 	string fname = "f";
 	string wname = "w";
 
-	string outputFile = "FreeEnergy.dat";
+	string outputFile = "FreeEnergy-Ins.dat";
 	
-	string exceptionsFileName = "Exceptions.txt";
+	string exceptionsFileName = "Exceptions-Ins.txt";
 
 	/* ----------------------------------------------------------------
 
