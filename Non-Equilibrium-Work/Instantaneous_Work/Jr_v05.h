@@ -25,9 +25,9 @@ void zeros(T**& array, const int& nrows, const int& ncols)
 {
 	array = nullptr;
 	T* temp = new T[nrows * ncols]();
-	array = new T*[nrows];
+	array = new T * [nrows];
 	for (int i = 0; i < nrows; i++)
-		array[i] = &temp[i * ncols];		
+		array[i] = &temp[i * ncols];
 }
 
 template<typename T>
@@ -43,7 +43,7 @@ void deallocate(T**& array)
 	delete[] array;
 }
 
-void readSims(const dataFormat& df, string* folders, int * exceptions, 
+void readSims(const dataFormat& df, string* folders, int* exceptions,
 	int* step, double** z1, double** z2, double** z3, double** f)
 {
 	for (int z = 0; z < df.numFolders; z++)
@@ -114,8 +114,8 @@ void readSims(const dataFormat& df, string* folders, int * exceptions,
 }
 
 void writeData(const dataFormat& df,
-	int *step, double** data, string fileName, const string dataName, 
-	int *exceptions)
+	int* step, double** data, string fileName, const string dataName,
+	int* exceptions)
 {
 	ofstream file;
 	file.open(fileName);
@@ -132,7 +132,7 @@ void writeData(const dataFormat& df,
 	file << "std,";
 	file << "ErrorOfMean" << endl;
 
-	
+
 	for (int j = 0; j < df.numDirs * df.numData; j++)
 	{
 		int stepj;
@@ -187,9 +187,11 @@ void calcInstWork(const dataFormat& df,
 			//int indx2 =  k * 2 * numSims * numData + (j) * 2 * numSims + i + numSims * z;
 			if (exceptions[i] == 0) {
 				if (j < df.numData)
-					wj = (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
-				if (j >= df.numData)
-					wj = -(f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
+					wj = (f[j - 1][i] + f[j][i]) * (z1[j][i] - z1[j - 1][i]) / 2.0;
+				if (j == df.numData)
+					wj = 0;
+				if (j > df.numData)
+					wj = (f[j - 1][i] + f[j][i]) * (z1[j][i] - z1[j - 1][i]) / 2.0;
 			}
 			w[j][i] = wj;
 		}
@@ -232,40 +234,40 @@ void cumulateWork(const dataFormat& df, T* wIns, T* wAvg)
 		wAvg[i] = wIns[i] + wAvg[i - 1];
 }
 
-void calcJar(const dataFormat& df , double** w, int* exceptions,
+void calcJar(const dataFormat& df, double** w, int* exceptions,
 	long double* gExp, double* gSec, double* wAvg)
 {
 	double beta = 1 / 0.592; // 1/kT = 1/0.529 (mol/kCal)
 
 	for (int i = 0; i < df.numDirs * df.numData; i++)
 	{
-			long double gexp = 0.0;
-			double gsec = 0.0;
-			double wavg = 0.0;
-			double w2avg = 0.0;
-			for (int j = 0; j < df.numFolders * df.numSims; j++)
+		long double gexp = 0.0;
+		double gsec = 0.0;
+		double wavg = 0.0;
+		double w2avg = 0.0;
+		for (int j = 0; j < df.numFolders * df.numSims; j++)
+		{
+			if (exceptions[j] == 0)
 			{
-				if (exceptions[j] == 0)
-				{
-					double wi = w[i][j];
-					gexp += exp((long double)(-beta * wi));
-					wavg += wi;
-					w2avg += wi * wi;
-				}
+				double wi = w[i][j];
+				gexp += exp((long double)(-beta * wi));
+				wavg += wi;
+				w2avg += wi * wi;
 			}
+		}
 
-			int totExcept = 0;
-			for (int k = 0; k < df.numFolders * df.numSims; k++) totExcept += exceptions[k];
+		int totExcept = 0;
+		for (int k = 0; k < df.numFolders * df.numSims; k++) totExcept += exceptions[k];
 
-			gexp /= (long double)(df.numFolders * df.numSims - totExcept);
-			gexp = -(1.0 / beta) * log(gexp);
-			wavg /= (double)(df.numFolders * df.numSims - totExcept);
-			w2avg /= (double)(df.numFolders * df.numSims - totExcept);
-			gsec = wavg - (beta / 2) * (w2avg - wavg * wavg);
+		gexp /= (long double)(df.numFolders * df.numSims - totExcept);
+		gexp = -(1.0 / beta) * log(gexp);
+		wavg /= (double)(df.numFolders * df.numSims - totExcept);
+		w2avg /= (double)(df.numFolders * df.numSims - totExcept);
+		gsec = wavg - (beta / 2) * (w2avg - wavg * wavg);
 
-			gExp[i] = gexp;
-			gSec[i] = gsec;
-			wAvg[i] = wavg;
+		gExp[i] = gexp;
+		gSec[i] = gsec;
+		wAvg[i] = wavg;
 	}
 }
 
@@ -274,22 +276,22 @@ void calcBar(const dataFormat& df, double* gBar)
 	fstream BAR_file;
 	string line;
 	stringstream iss;
-	std::string command = "./BAR.py " + std::to_string(df.numFolders) + " " + std::to_string(df.numSims) + " " + std::to_string(df.numData);
+	std::string command = "./BAR-Ins.py " + std::to_string(df.numFolders) + " " + std::to_string(df.numSims) + " " + std::to_string(df.numData);
 
 	// Execute the command using system()
 	int result = system(command.c_str());
 
-	
+
 
 	// Check the result
 	if (result == 0) {
 
 	}
 	else {
-		std::cout << "BAR.py execution failed." << std::endl;
+		std::cout << "BAR-Ins.py execution failed." << std::endl;
 	}
 
-	BAR_file.open("BAR.dat");
+	BAR_file.open("BAR-Ins.dat");
 
 	int i = -2;
 	while (std::getline(BAR_file, line))
@@ -307,7 +309,7 @@ void calcBar(const dataFormat& df, double* gBar)
 		gBar[i] = g;
 	}
 	BAR_file.close();
-	
+
 	//for (int i = 0; i < numData; i++) gBar[numData-i-1] = gBar[i];
 }
 
@@ -355,7 +357,7 @@ void average(const dataFormat& df,
 }
 
 
-void shiftJar(const dataFormat& df, long double* gExp, double* gSec, double * gBar, double* wAvg)
+void shiftJar(const dataFormat& df, long double* gExp, double* gSec, double* gBar, double* wAvg)
 {
 	int len = df.numData * 5 / 100;
 	double gExpNeg, gExpPos, gSecNeg, gSecPos, gBarPos, gBarNeg, wAvgNeg, wAvgPos;
