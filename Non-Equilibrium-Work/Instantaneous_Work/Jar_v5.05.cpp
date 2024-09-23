@@ -4,7 +4,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include "Jr_v03.h"
+#include "Jr_v05.h"
 using namespace std;
 
 string version = "5.05";
@@ -63,29 +63,33 @@ int main(int argc, char** argv)
 
 	   ---------------------------------------------------------------- */
 	cout << "Initializing the arrays" << endl;
-	int* step = nullptr;
-	double** z1 = nullptr;
-	double** z2 = nullptr;
-	double** z3 = nullptr;
-	double** f = nullptr;
-	double** w = nullptr;
-	long double* gExp = nullptr;
-	double* gSec = nullptr;
-	double* gBar = nullptr;
-	double* wAvg = nullptr;
-	int* exceptions  = nullptr;
-	double* z1avg = nullptr;
+	int* step, * exceptions;
+	double** z1, ** z2, ** z3, ** f, ** wIns, ** w, *gBarIns, *gBar, * gSecIns, * gSec, *wInsAvg, * wAvg, * z1avg;
+	long double* gExpIns, * gExp;
+
 
 	zeros(step, numDirs*numData); // forward-reverse
 	zeros(z1, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
 	zeros(z2, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
 	zeros(z3, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
 	zeros(f, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
+
+	zeros(wIns, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
+	zeros(gExpIns, numData * numDirs); // forward-reverse
+	zeros(gBarIns, numData * numDirs); // forward-reverse
+	zeros(gSecIns, numData * numDirs); // forward-reverse
+
+
 	zeros(w, numDirs * numData, numSims * numFolders); // forward-reverse + two folders
 	zeros(gExp,numData * numDirs); // forward-reverse
 	zeros(gBar,numData * numDirs); // forward-reverse
 	zeros(gSec,numData * numDirs); // forward-reverse
+
+
+	zeros(wInsAvg, numData * numDirs);
 	zeros(wAvg,numData * numDirs); // forward-reverse
+
+
 	zeros(z1avg, numData * numDirs); // forward-reverse
 	zeros(exceptions,numFolders*numSims);
 
@@ -95,8 +99,9 @@ int main(int argc, char** argv)
 	   ---------------------------------------------------------------- */
 	cout << "Reading the simulation data" << endl;
 	readSims(df, folders, exceptions ,step, z1, z2, z3, f);
-	
-	
+	/* ----------------------------------------------------------------
+
+	   ---------------------------------------------------------------- */
 	cout << "Writing the simulation data" << endl;
 	writeData(df, step, z1, z1file, z1name, exceptions);
 	writeData(df, step, z2, z2file, z2name, exceptions);
@@ -107,22 +112,29 @@ int main(int argc, char** argv)
 	   ---------------------------------------------------------------- */
 	cout << "Calculating the z1 average" << endl;
 	average(df, z1, z1avg, exceptions);
-	
 	/* ----------------------------------------------------------------
 
 	   ---------------------------------------------------------------- */
-	
-	cout << "Calculating the work" << endl;
-	calcWork(df, exceptions, z1, f, w);
+	cout << "Calculating instantaneous the work" << endl;
+	calcInstWork(df, exceptions, z1, f, wIns);
+	cout << "Cumulating the work" << endl;
+	cumulateWork(df, wIns, w);
 	cout << "Writing the work" << endl;
 	writeData(df, step, w,  wfile,  fname,  exceptions);
 	/* ----------------------------------------------------------------
 
 	   ---------------------------------------------------------------- */
-	cout << "Calculating the free energy" << endl;
-	calcJar(df, w, exceptions, gExp, gSec, wAvg);
-	calcBar(df,gBar);
+	cout << "Calculating the instantaneous free energy" << endl;
+	calcJar(df, wIns, exceptions, gExpIns, gSecIns, wInsAvg);
+	calcBar(df,gBarIns);
 	/* ----------------------------------------------------------------
+
+	   ---------------------------------------------------------------- */
+	cout << "Cumulating the free energy" << endl;
+	cumulateWork(df, gExpIns, gExp);
+	cumulateWork(df, gSecIns, gSec);
+	cumulateWork(df, gBarIns, gBar);
+ 	/* ----------------------------------------------------------------
 	
 	   ---------------------------------------------------------------- */
 	cout << "Shifting the free energy" << endl;
@@ -137,20 +149,34 @@ int main(int argc, char** argv)
 	   ---------------------------------------------------------------- */
 	cout << "Writing the exceptions" << endl;
 	writeExceptions(df, exceptionsFileName, exceptions);
+	/* ----------------------------------------------------------------
 
+	   ---------------------------------------------------------------- */
 	cout << "Cleaning up" << endl;
+	/* ----------------------------------------------------------------
 
+	   ---------------------------------------------------------------- */
 	deallocate(step);
 	deallocate(z1);
 	deallocate(z2);
 	deallocate(z3);
 	deallocate(f);
 	deallocate(w);
+	deallocate(z1avg);
+	deallocate(wAvg);
+	deallocate(wIns);
+	deallocate(wInsAvg);
+	deallocate(gBarIns);
+	deallocate(gExpIns);
+	deallocate(gSecIns);
+	deallocate(gBar);
 	deallocate(gExp);
 	deallocate(gSec);
-	deallocate(wAvg);
 	deallocate(exceptions);
+	/* ----------------------------------------------------------------
 
+	   ---------------------------------------------------------------- */
 	cout << "All done!" << endl;
 	return 0;
 }
+
