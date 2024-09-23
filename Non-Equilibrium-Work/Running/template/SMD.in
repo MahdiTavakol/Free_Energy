@@ -1,0 +1,105 @@
+# A Simple input file to solvate two silicas
+# Mahdi Tavakol (mahditavakol90@gmail.com)
+# -------------------------------------------------------------------
+shell          mkdir forward
+shell          cd forward
+log            forward.log
+
+# ------------------------ INITIALIZATION ----------------------------
+units          real
+boundary       p p p
+atom_style     full
+
+# ------------------- Neighbor generation and skin ---------------------
+neigh_modify   delay 1
+neighbor       2 bin
+
+# -------------------------- VARIABLES --------------------------------
+variable       temp       equal 300
+variable       timestep   equal 1.0
+variable       tDamp      equal 100.0*${timestep}
+variable       press      equal 0.0
+variable       pDamp      equal 1000.0*${timestep}
+variable       R          equal 15000000              # 15ns
+variable       step       equal step
+variable       dumpFreq   equal 1000000               
+variable       thermoFreq equal 1000                  # 100ps
+variable       Nfreq      equal ${dumpFreq}
+variable       Nrepeat    equal 10
+variable       Nevery     equal 1000
+variable       ResFreq    equal 10000000 #10ns
+variable       DatFreq    equal 1000000  #1ns
+variable       PrtFreq    equal 10000    #10ps
+variable       vel        equal 1e-6 #1A/ns
+ 
+# --------------------- Forcefield ------------------------------------
+bond_style     harmonic
+angle_style    harmonic
+dihedral_style harmonic
+improper_style harmonic
+pair_style     lj/charmm/coul/long 10 12
+kspace_style   pppm 1.0e-6 
+
+# ----------------------- READ DATA FILE ------------------------------
+read_data      ../EQ-Res-${frame}.dat
+
+# -------------------------- SETTINGS ---------------------------------
+#### Computes Required
+compute        mytemp all   temp
+thermo         ${thermoFreq}
+#restart        10000 restart1.bin restart2.bin
+
+# ------------------- Simulation Parameters ---------------------------
+timestep       1
+timestep       ${timestep}
+dump           2 all custom ${dumpFreq} dump.npt.lammpstrj mass id mol q type xs ys zs
+dump_modify    2 element O Ca P O H O H Mg Cl
+
+# ----------------------------- SMD ---------------------------------
+
+variable       x0        equal 0.0
+variable       y0        equal 0.0
+variable       z0        equal 1.0
+variable       r0        equal 0.0
+variable       K1        equal 1500 # kcal/mol/A2
+variable       K2        equal 1500 # kcal/mol/A2
+group          smdGroup  id    7946
+
+group          HAp       type <= 5
+variable       BChigh    equal 3
+region         BC        block INF INF INF INF INF ${BChigh} units box
+group          BC        region BC
+group          BCHAp     intersect BC HAp
+group          mobile    subtract all BCHAp
+variable       BCHApCM   equal xcm(BCHAp,z)
+variable       dist1     equal xcm(smdGroup,z)-xcm(BCHAp,z) 
+
+
+fix            5        smdGroup smd cvel ${K1} ${vel} direction ${x0} ${y0} ${z0} ${r0}
+
+velocity       BCHAp    set   NULL NULL 0.0
+fix            7        BCHAp setforce NULL NULL 0.0
+
+
+# -----------------------     -----------------------------------
+fix            3 all     shake 0.0001 20 1000 b 4 a 3 
+fix            1 all     nvt temp ${temp} ${temp} ${tDamp}
+
+# -------------------------- SMD output ------------------------------
+
+variable       t        equal step
+variable       ft       equal f_5[3]
+variable       z1       equal f_5[5] #0
+variable       z2       equal f_5[6]
+variable       d1       equal xcm(smdGroup,z)
+variable       z3       equal v_d1-${d1}
+variable       d2       equal xcm(smdGroup,z)-xcm(BCHAp,z)
+variable       z4       equal v_d2-${d2}
+fix            6        all   print ${PrtFreq} "${t} ${z2} ${z3} ${z4} ${ft}" file smd.out screen no title ""
+
+
+# --------------------------------------------------------------------
+
+run            $R # The every keyword does not work with fix SMD
+# --------- Writting the output coordinates and velocities ------------ 
+write_data     SMD.dat pair ij
