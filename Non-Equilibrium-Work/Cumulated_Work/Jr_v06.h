@@ -188,7 +188,11 @@ void calcWork(const dataFormat& df,
 			if (exceptions[i] == 0) {
 				if (j < df.numData)
 					wj += (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
-				if (j >= df.numData)
+				if (j == df.numData)
+				{
+					// Do nothing since j == df.numData and j == df.numData - 1 are both the same point. 
+				}
+				if (j > df.numData)
 					wj -= (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
 			}
 			w[j][i] = wj;
