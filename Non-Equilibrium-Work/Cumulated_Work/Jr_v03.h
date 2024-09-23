@@ -132,52 +132,50 @@ void writeData(const dataFormat& df,
 	file << "std,";
 	file << "ErrorOfMean" << endl;
 
-	// forward reverse so j < 2 * numData
-	for (int z = 0; z < 1; z++)
-		for (int j = 0; j < 2 * df.numData; j++)
+	
+	for (int j = 0; j < df.numDirs * df.numData; j++)
+	{
+		int stepj;
+		double datai, std, err;
+		double dataAvg = 0.0;
+		double data2Avg = 0.0;
+		stepj = step[j];
+		file << stepj;
+
+		for (int i = 0; i < df.numFolders * df.numSims; i++)
 		{
-			int stepj;
-			double datai, std, err;
-			double dataAvg = 0.0;
-			double data2Avg = 0.0;
-			stepj = step[j];
-			file << stepj;
-			// Two folders so i < 2*numSims
-			for (int i = 0; i < df.numFolders * df.numSims; i++)
-			{
-				datai = data[j][i];
-				file << "," << datai;
-				if (exceptions[i] == 1) continue;
-				dataAvg += datai;
-				data2Avg += datai * datai;
+			datai = data[j][i];
+			file << "," << datai;
+			if (exceptions[i] == 1) continue;
+			dataAvg += datai;
+			data2Avg += datai * datai;
 
-			}
-
-			int totExcept = 0;
-			for (int k = 0; k < df.numFolders * df.numSims; k++) totExcept += exceptions[k];
-
-			dataAvg /= double(df.numFolders * df.numSims - totExcept);
-			data2Avg /= double(df.numFolders * df.numSims - totExcept);
-			std = data2Avg - dataAvg * dataAvg;
-			err = std / sqrt(double(df.numFolders * df.numSims - totExcept));
-			file << "," << dataAvg;
-			file << "," << data2Avg;
-			file << "," << std;
-			file << "," << err << endl;
 		}
+
+		int totExcept = 0;
+		for (int k = 0; k < df.numFolders * df.numSims; k++) totExcept += exceptions[k];
+
+		dataAvg /= double(df.numFolders * df.numSims - totExcept);
+		data2Avg /= double(df.numFolders * df.numSims - totExcept);
+		std = data2Avg - dataAvg * dataAvg;
+		err = std / sqrt(double(df.numFolders * df.numSims - totExcept));
+		file << "," << dataAvg;
+		file << "," << data2Avg;
+		file << "," << std;
+		file << "," << err << endl;
+	}
 	file.close();
 }
 
 void calcWork(const dataFormat& df,
 	int* exceptions, double** z1, double** f, double** w)
 {
-	// Two folders so i < 2 * numSims
 	for (int i = 0; i < df.numFolders * df.numSims; i++)
 	{
 		double wj = 0.0;
 		w[0][i] = wj;
-		// Forward-Reverse so j < 2*numData  
-		for (int j = 1; j < 2 * df.numData; j++)
+
+		for (int j = 1; j < df.numDirs * df.numData; j++)
 		{
 			/*if (i == numData/2)
 			{
@@ -189,9 +187,9 @@ void calcWork(const dataFormat& df,
 			//int indx2 =  k * 2 * numSims * numData + (j) * 2 * numSims + i + numSims * z;
 			if (exceptions[i] == 0) {
 				if (j < df.numData)
-					wj += (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i]) / 2.0;
+					wj += (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
 				if (j >= df.numData)
-					wj -= (f[j - 1][i] + f[j][i]) * (z1[j][i] - z1[j - 1][i]) / 2.0;
+					wj -= (f[j-1][i] + f[j][i]) * (z1[j][i]-z1[j-1][i])/2.0;
 			}
 			w[j][i] = wj;
 		}
@@ -207,7 +205,7 @@ void calcWork(const dataFormat& df,
 		wavg[i] /= len;
 	}
 	for (int i = 0; i < df.numFolders * df.numSims; i++)
-		for (int j = 0; j < 2 * df.numData; j++)
+		for (int j = 0; j < df.numDirs * df.numData; j++)
 			w[j][i] -= wavg[i];
 
 	delete[] wavg;
@@ -217,26 +215,22 @@ void calcJar(const dataFormat& df , double** w, int* exceptions,
 	long double* gExp, double* gSec, double* wAvg)
 {
 	double beta = 1 / 0.592; // 1/kT = 1/0.529 (mol/kCal)
-	for (int z = 0; z < 1; z++)
-		for (int i = 0; i < 2 * df.numData; i++)
-		{
+
+	for (int i = 0; i < df.numDirs * df.numData; i++)
+	{
 			long double gexp = 0.0;
 			double gsec = 0.0;
 			double wavg = 0.0;
 			double w2avg = 0.0;
 			for (int j = 0; j < df.numFolders * df.numSims; j++)
 			{
-				bool except = false;
-				if (exceptions[j] == 1) except = true;
-				if (!except)
+				if (exceptions[j] == 0)
 				{
-					int indx = i * df.numFolders * df.numSims + j;
 					double wi = w[i][j];
 					gexp += exp((long double)(-beta * wi));
 					wavg += wi;
 					w2avg += wi * wi;
 				}
-
 			}
 
 			int totExcept = 0;
@@ -251,7 +245,7 @@ void calcJar(const dataFormat& df , double** w, int* exceptions,
 			gExp[i] = gexp;
 			gSec[i] = gsec;
 			wAvg[i] = wavg;
-		}
+	}
 }
 
 void calcBar(const dataFormat& df, double* gBar)
@@ -268,7 +262,7 @@ void calcBar(const dataFormat& df, double* gBar)
 
 	// Check the result
 	if (result == 0) {
-		
+
 	}
 	else {
 		std::cout << "BAR.py execution failed." << std::endl;
@@ -310,9 +304,10 @@ void writeOutput(const dataFormat& df, const string& outputFile,
 	file << "gExp,";
 	file << "gSec,";
 	file << "gBar,";
-	file << "wAvg" << endl;
+	file << "wAvg";
+	file << endl;
 
-	for (int i = 0; i < 2 * df.numData; i++) {
+	for (int i = 0; i < df.numDirs * df.numData; i++) {
 		file << step[i] << "," << z1avg[i] << "," << gExp[i] << "," << gSec[i] << "," << gBar[i] << "," << wAvg[i] << endl;
 	}
 	file.close();
@@ -323,7 +318,7 @@ void average(const dataFormat& df,
 	int* exceptions)
 {
 	for (int z = 0; z < 1; z++)
-		for (int i = 0; i < 2 * df.numData; i++)
+		for (int i = 0; i < df.numDirs * df.numData; i++)
 		{
 			double avg = 0.0;
 			for (int j = 0; j < df.numFolders * df.numSims; j++)
