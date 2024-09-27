@@ -5,3 +5,7 @@ EQModify ---> Adds the non-bonded parameters and mass of atom type X to the syst
 TI-Foldermaker.sh ---> Creats folders for TI steps.
 
 TI.in ---> LAMMPS input script which randomly changes y% of atoms of type Ca2+ to type X and runs a simulation.
+
+shMaker.sh ---> This file creates sh files for running the individual steps on ARCHER2
+
+shSubmitter.sh ---> Submits the .sh files on ARCHER2
