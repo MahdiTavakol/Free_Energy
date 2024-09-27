@@ -35,7 +35,7 @@ base_dir="/mnt/lustre/a2fs-nvme/work/e280/e280/mthecbio/1-Simulations/178/2-TI/"
 run_simulation() {
     local sim_dir=\$1
     local sim_executable="./lmp-archer2-cray-clang-metaAR-v7.5.03"
-    local input_file="EQ.in"
+    local input_file="TI.in"
 
     cd \$sim_dir
     srun --exclusive --ntasks=32 --cpus-per-task=1 \$sim_executable -in \$input_file -var RAND1 \$RANDOM &
