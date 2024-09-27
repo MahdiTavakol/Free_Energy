@@ -1,0 +1,695 @@
+LAMMPS (2 Aug 2023 - Update 3)
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (src/comm.cpp:98)
+  using 1 OpenMP thread(s) per MPI task
+# A Simple input file to solvate two silicas
+# Mahdi Tavakol (mahditavakol90@gmail.com)
+
+# ------------------------ INITIALIZATION ----------------------------
+units          real
+boundary       p p p
+atom_style     full
+
+# ------------------- Neighbor generation and skin ---------------------
+neigh_modify   delay 1
+neighbor       2 bin
+
+# -------------------------- VARIABLES --------------------------------
+variable       temp       equal 300
+variable       timestep   equal 1.0
+variable       tDamp      equal 100.0*${timestep}
+variable       tDamp      equal 100.0*1
+variable       press      equal 0.0
+variable       pDamp      equal 1000.0*${timestep}
+variable       pDamp      equal 1000.0*1
+variable       R          equal 10000000              # 10ns
+variable       step       equal step
+variable       dumpFreq   equal 100 #100000                # 100ps
+variable       thermoFreq equal 100 #1000                  # 100ps
+variable       Nfreq      equal ${dumpFreq}
+variable       Nfreq      equal 100
+variable       Nrepeat    equal 10
+variable       Nevery     equal 1000
+variable       time       equal time
+variable       totEnergy  equal etotal
+variable       kinEnergy  equal ke
+
+
+#######################################################################
+variable       TIscale    equal  0.48
+variable       TIindex    equal  0.50
+
+# --------------------- Forcefield ------------------------------------
+bond_style     harmonic
+angle_style    harmonic
+dihedral_style harmonic
+improper_style harmonic
+pair_style     lj/charmm/coul/long 10 12
+kspace_style   pppm 1.0e-6
+
+# ----------------------- READ DATA FILE ------------------------------
+read_data      TI-0-48.dat
+Reading data file ...
+  orthogonal box = (0.21898106 1.1722795 -42.53883) to (36.86084 32.822258 72.971916)
+  2 by 2 by 10 MPI processor grid
+WARNING: Pair style lj/cut/coul/long in data file differs from currently defined pair style lj/charmm/coul/long (src/read_data.cpp:701)
+  reading atoms ...
+  13569 atoms
+  reading velocities ...
+  13569 velocities
+  scanning bonds ...
+  2 = max bonds/atom
+  scanning angles ...
+  6 = max angles/atom
+  scanning dihedrals ...
+  3 = max dihedrals/atom
+  reading bonds ...
+  8934 bonds
+  reading angles ...
+  6023 angles
+  reading dihedrals ...
+  408 dihedrals
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     4 = max # of 1-2 neighbors
+     3 = max # of 1-3 neighbors
+     5 = max # of 1-4 neighbors
+     6 = max # of special neighbors
+  special bonds CPU = 0.002 seconds
+  read_data CPU = 0.095 seconds
+
+# -------------------------- SETTINGS ---------------------------------
+#### Computes Required
+compute        mytemp all   temp
+thermo         ${thermoFreq}
+thermo         100
+thermo_style   custom step temp etotal epair ebond eangle press density pxx pyy pzz lx ly lz spcpu
+restart        10000 restart1.bin restart2.bin
+
+
+
+#######################################################################
+group          TI2      type 10
+274 atoms in group TI2
+variable       TI2count equal count(TI2)
+variable       q        atom "1.5 + v_TIscale*(1.8-1.5)"
+set            type     10 charge v_q
+Setting atom values ...
+  274 settings made for charge
+group          P        type 3
+384 atoms in group P
+variable       Pcount   equal count(P)
+variable       Pq       atom "q - ( (v_TIscale - v_TIindex)*(1.8-1.5)*v_TI2count / v_Pcount)"
+set            group    P charge v_Pq
+Setting atom values ...
+  384 settings made for charge
+
+#######################################################################
+group          HAp      type <= 5
+2530 atoms in group HAp
+compute        peatom1 all pe/atom pair kspace
+compute        peatom2 HAp pe/atom pair kspace
+compute        pe1     all reduce sum c_peatom1
+compute        pe2     HAp reduce sum c_peatom2
+variable       count1  equal count(all)
+variable       count2  equal count(HAp)
+variable       peA     equal c_pe1/${count1}
+variable       peA     equal c_pe1/13569
+variable       peB     equal c_pe2/${count2}
+variable       peB     equal c_pe2/2530
+
+compute        peAll   all pe pair kspace
+variable       potEnergy equal c_peAll
+
+# ------------------- Simulation Parameters ---------------------------
+timestep       1
+timestep       ${timestep}
+timestep       1
+
+
+# -----------------------     -----------------------------------
+fix            3 all shake 0.0001 20 1000 b 4 a 3
+Finding SHAKE clusters ...
+       0 = # of size 2 clusters
+       0 = # of size 3 clusters
+       0 = # of size 4 clusters
+    3583 = # of frozen angles
+  find clusters CPU = 0.001 seconds
+fix            1 all npt temp ${temp} ${temp} ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+fix            1 all npt temp 300 ${temp} ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+fix            1 all npt temp 300 300 ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+fix            1 all npt temp 300 300 100 aniso ${press} ${press} ${pDamp} drag 2.0
+fix            1 all npt temp 300 300 100 aniso 0 ${press} ${pDamp} drag 2.0
+fix            1 all npt temp 300 300 100 aniso 0 0 ${pDamp} drag 2.0
+fix            1 all npt temp 300 300 100 aniso 0 0 1000 drag 2.0
+
+fix            6 all print ${dumpFreq} "${time} ${totEnergy} ${kinEnergy} ${potEnergy}" file Energies-time.txt screen no title ""
+fix            6 all print 100 "${time} ${totEnergy} ${kinEnergy} ${potEnergy}" file Energies-time.txt screen no title ""
+fix            7 all print ${dumpFreq} "${time} ${peA} ${peB}"                          file Energies-time-FromCompute.txt screen no title ""
+fix            7 all print 100 "${time} ${peA} ${peB}"                          file Energies-time-FromCompute.txt screen no title ""
+
+rerun          ../dump/dump.npt.lammpstrj dump x y z format native
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb (src/kspace.cpp:342)
+  G vector (1/distance) = 0.28448039
+  grid = 48 45 120
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.00035306813
+  estimated relative force accuracy = 1.0632542e-06
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 17670 6624
+Generated 45 of 45 mixed pair_coeff terms from arithmetic mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 1 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 14
+  ghost atom cutoff = 14
+  binsize = 7, bins = 6 5 17
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair lj/charmm/coul/long, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 0
+Bond:   4   0.9572    0.00021317      7166
+Angle:  3   104.52    0.0171946       3583
+Per MPI rank memory allocation (min/avg/max) = 14.23 | 14.58 | 14.9 Mbytes
+   Step          Temp          TotEng         E_pair         E_bond        E_angle         Press         Density          Pxx            Pyy            Pzz             Lx             Ly             Lz           S/CPU     
+         0   304.74383     -295362.96     -306584.49      1113.056       1038.2657     -7929.7082      1.5128249     -6672.491      -7311.0084     -9805.6253      37.657143      32.594348      112.26721      0            
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 100
+Bond:   4   0.957137  0.000246749     7166
+Angle:  3   104.52    0.0184329       3583
+       100   304.74383     -290068.18     -301505.61      958.61464      1408.6029      20033.614      1.5561089      19721.414      19161.816      21217.612      37.316695      32.295418      111.15965      812.21432    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 200
+Bond:   4   0.957184  0.000550237     7166
+Angle:  3   104.52    0.0232427       3583
+       200   304.74383     -290271.34     -302407.72      1543.1135      1523.049       28162.075      1.5755662      27097.63       25478.144      31910.45       37.152058      32.146588      110.78395      2694.241     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 300
+Bond:   4   0.957223  0.000258931     7166
+Angle:  3   104.52    0.0268935       3583
+       300   304.74383     -290255.24     -302247.52      1323.5849      1598.4881      28591.267      1.5724075      24103.943      24235.554      37434.306      37.069973      32.068945      111.52165      2649.3455    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 400
+Bond:   4   0.957221  0.000355525     7166
+Angle:  3   104.52    0.0214904       3583
+       400   304.74383     -291030.82     -302972.55      1342.6922      1528.8272      24263.65       1.5593918      22726.015      21184.325      28880.609      37.04294       32.054246      112.58616      2672.0992    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 500
+Bond:   4   0.957185  0.000381088     7166
+Angle:  3   104.52    0.0332482       3583
+       500   304.74383     -291732.81     -303582.47      1305.8712      1473.5786      22398.814      1.5582508      21867.722      21149.648      24179.071      36.985147      31.993451      113.05908      2724.7071    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 600
+Bond:   4   0.957179  0.000452303     7166
+Angle:  3   104.52    0.0445385       3583
+       600   304.74383     -291898.36     -303640.18      1268.4082      1403.2002      22897.369      1.5686275      22315.666      22960.087      23416.354      36.871214      31.884987      113.04146      2753.5836    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 700
+Bond:   4   0.957189  0.000239579     7166
+Angle:  3   104.52    0.0198587       3583
+       700   304.74383     -292107.13     -303937.14      1381.5316      1378.2682      24558.547      1.5766656      22968.531      24323.446      26383.664      36.806929      31.805925      112.94163      2663.1147    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 800
+Bond:   4   0.957206  0.000699981     7166
+Angle:  3   104.52    0.0270993       3583
+       800   304.74383     -292016.53     -303875.36      1319.4546      1469.1686      24885.438      1.5774262      23686.819      23924.418      27045.078      36.7827        31.770954      113.08587      2751.9664    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 900
+Bond:   4   0.957207  0.000440483     7166
+Angle:  3   104.52    0.0653423       3583
+       900   304.74383     -292375.69     -304220.44      1379.357       1395.1828      24479.405      1.5734862      22382.216      24901.111      26154.887      36.788144      31.759206      113.39419      2728.3001    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1000
+Bond:   4   0.9572    0.000251315     7166
+Angle:  3   104.52    0.0257481       3583
+      1000   304.74383     -292145.53     -303951.83      1372.9615      1363.1322      25264.078      1.5729161      24362.257      26445.414      24984.561      36.764904      31.742284      113.5675       2778.0604    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1100
+Bond:   4   0.957203  0.000247816     7166
+Angle:  3   104.52    0.0278963       3583
+      1100   304.74383     -292333.92     -304153.61      1357.9339      1391.5546      24668.438      1.5717579      23873.934      25834.673      24296.707      36.755719      31.731236      113.71916      2784.1362    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1200
+Bond:   4   0.957197  0.000619535     7166
+Angle:  3   104.52    0.0373552       3583
+      1200   304.74383     -292312.54     -304142.36      1387.8283      1371.79        25751.918      1.5722321      24842.679      25692.152      26720.924      36.745389      31.725723      113.73659      2801.7955    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1300
+Bond:   4   0.957205  0.000220673     7166
+Angle:  3   104.52    0.0289066       3583
+      1300   304.74383     -292279.11     -304078.76      1327.8721      1401.5626      25978.865      1.5713234      25476.1        25667.282      26793.212      36.740138      31.739836      113.76802      2780.2959    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1400
+Bond:   4   0.957202  0.000217775     7166
+Angle:  3   104.52    0.0194688       3583
+      1400   304.74383     -292586.55     -304403.98      1385.259       1361.9698      25620.274      1.5694047      26010.215      25277.319      25573.286      36.732622      31.761326      113.85333      2813.6306    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1500
+Bond:   4   0.9572    0.000241374     7166
+Angle:  3   104.52    0.0211664       3583
+      1500   304.74383     -292600.47     -304424.24      1374.7944      1378.7731      24913.86       1.5690557      25078.188      24136.139      25527.254      36.718808      31.760915      113.92297      2797.4345    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1600
+Bond:   4   0.9572    0.000454425     7166
+Angle:  3   104.52    0.0448688       3583
+      1600   304.74383     -292780.19     -304505.63      1360.191       1295.0409      25459.51       1.5693535      25083.02       24219.024      27076.485      36.711488      31.753749      113.94977      2798.4528    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1700
+Bond:   4   0.9572    0.000338149     7166
+Angle:  3   104.52    0.0264407       3583
+      1700   304.74383     -292931.44     -304646.52      1377.9139      1266.9568      25400.928      1.5698852      22831.67       25478.222      27892.892      36.699525      31.736847      114.009        2762.2664    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1800
+Bond:   4   0.957204  0.00061141      7166
+Angle:  3   104.52    0.0353902       3583
+      1800   304.74383     -292687.88     -304412.21      1374.2022      1279.9196      25754.608      1.5690637      24692.329      25246.32       27325.175      36.679277      31.721895      114.18545      2801.7331    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 1900
+Bond:   4   0.9572    0.000322962     7166
+Angle:  3   104.52    0.0201121       3583
+      1900   304.74383     -292932.01     -304706.28      1413.9866      1290.0752      26056.236      1.5683727      24881.762      25300.816      27986.128      36.664479      31.711258      114.3202       2822.0104    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2000
+Bond:   4   0.957202  0.000334642     7166
+Angle:  3   104.52    0.0453253       3583
+      2000   304.74383     -292799.27     -304554.84      1346.5118      1338.8517      25945.223      1.5680068      26210.801      25757.888      25866.979      36.657712      31.695456      114.42501      2784.663     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2100
+Bond:   4   0.957202  0.000210131     7166
+Angle:  3   104.52    0.0170024       3583
+      2100   304.74383     -293061.98     -304824.23      1379.9475      1312.099       25518.683      1.5663286      23084.606      26755.34       26716.102      36.681276      31.696647      114.46972      2808.4602    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2200
+Bond:   4   0.957199  0.000247874     7166
+Angle:  3   104.52    0.0190713       3583
+      2200   304.74383     -292774.23     -304507.31      1351.6276      1311.2433      26143.771      1.5664275      23872.681      25579.441      28979.192      36.687576      31.701607      114.42493      2819.6299    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2300
+Bond:   4   0.957203  0.00035887      7166
+Angle:  3   104.52    0.0333269       3583
+      2300   304.74383     -292803.23     -304610.34      1409.5237      1327.381       26784.352      1.5668612      24670.817      26893.016      28789.223      36.663286      31.704239      114.45953      2855.3497    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2400
+Bond:   4   0.957206  0.000766442     7166
+Angle:  3   104.52    0.027718        3583
+      2400   304.74383     -292725.65     -304447.48      1389.7546      1261.8578      26511.333      1.5639243      24879.006      26796.895      27858.097      36.662994      31.732245      114.57419      2769.2309    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2500
+Bond:   4   0.957201  0.000648226     7166
+Angle:  3   104.52    0.0601446       3583
+      2500   304.74383     -292858.88     -304524.02      1317.0688      1277.8626      26326.261      1.5624354      23617.206      26164.996      29196.58       36.66055       31.759296      114.59332      2796.2894    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2600
+Bond:   4   0.957195  0.00025987      7166
+Angle:  3   104.52    0.0281891       3583
+      2600   304.74383     -292984.9      -304751.83      1416.6611      1280.0586      26060.077      1.5636617      24799.086      26285.583      27095.562      36.638299      31.766533      114.5469       2797.1384    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2700
+Bond:   4   0.957196  0.000714975     7166
+Angle:  3   104.52    0.0449264       3583
+      2700   304.74383     -293092.95     -304812.09      1325.1777      1323.7536      25896.294      1.5657607      24691.638      24725.519      28271.726      36.627692      31.748582      114.49117      2819.0818    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2800
+Bond:   4   0.9572    0.000216247     7166
+Angle:  3   104.52    0.0183676       3583
+      2800   304.74383     -293025.33     -304761.19      1385.269       1280.3911      25833.636      1.5666879      23793.652      25631.076      28076.181      36.631003      31.727927      114.48754      2748.3291    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 2900
+Bond:   4   0.957201  0.000559275     7166
+Angle:  3   104.52    0.0391652       3583
+      2900   304.74383     -292822.74     -304594.58      1387.1619      1314.4613      26857.737      1.5675953      24029.412      26144.962      30398.838      36.639002      31.706446      114.47379      2811.6503    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3000
+Bond:   4   0.957201  0.00056187      7166
+Angle:  3   104.52    0.0327899       3583
+      3000   304.74383     -292871.22     -304564.79      1366.911       1256.4531      25278.41       1.5668334      24256.643      25464.493      26114.096      36.65262       31.690316      114.54518      2817.1615    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3100
+Bond:   4   0.957202  0.000206985     7166
+Angle:  3   104.52    0.0177688       3583
+      3100   304.74383     -292858.32     -304544.33      1352.9902      1262.8062      26539.486      1.5665598      24574.686      26247.326      28796.446      36.675987      31.686138      114.50729      2777.8289    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3200
+Bond:   4   0.957199  0.000445394     7166
+Angle:  3   104.52    0.0446046       3583
+      3200   304.74383     -293066.62     -304736.09      1311.7233      1287.5302      24926.459      1.5656257      24338.982      23553.451      26886.946      36.693818      31.699949      114.47004      2819.7313    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3300
+Bond:   4   0.957197  0.000509443     7166
+Angle:  3   104.52    0.043234        3583
+      3300   304.74383     -292725.44     -304487.57      1412.2892      1279.6297      26237.727      1.5673602      24308.929      25998.708      28405.543      36.691251      31.694097      114.37248      2831.3085    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3400
+Bond:   4   0.9572    0.000624867     7166
+Angle:  3   104.52    0.0266508       3583
+      3400   304.74383     -292921.39     -304586.15      1314.5953      1279.9561      25725.265      1.5677185      24011.032      25768.538      27396.224      36.683597      31.705953      114.32743      2848.5367    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3500
+Bond:   4   0.957197  0.000583063     7166
+Angle:  3   104.52    0.0228067       3583
+      3500   304.74383     -292622.52     -304364.12      1319.3804      1352.0176      26474.933      1.5686589      24909.7        26218.482      28296.617      36.669734      31.711082      114.2836       2857.9126    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3600
+Bond:   4   0.9572    0.000438931     7166
+Angle:  3   104.52    0.0405426       3583
+      3600   304.74383     -292975.01     -304787.02      1424.2447      1317.5636      25700.861      1.5695094      24760.765      25908.321      26433.496      36.642048      31.71459       114.29533      2847.8308    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3700
+Bond:   4   0.957207  0.000550843     7166
+Angle:  3   104.52    0.0360231       3583
+      3700   304.74383     -292750.81     -304435.56      1312.7857      1301.7516      25264.29       1.5676842      23112.568      24698.673      27981.629      36.639591      31.733532      114.36776      2859.2339    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3800
+Bond:   4   0.957203  0.000216474     7166
+Angle:  3   104.52    0.0182585       3583
+      3800   304.74383     -292609.44     -304323.83      1343.6291      1300.5538      26303.246      1.565649       25094.776      25902.383      27912.58       36.632101      31.750939      114.47705      2854.2306    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 3900
+Bond:   4   0.957202  0.000217578     7166
+Angle:  3   104.52    0.0196007       3583
+      3900   304.74383     -292995.49     -304707.95      1377.0574      1265.202       24784.465      1.564131       22454.898      26195.083      25703.413      36.634395      31.750415      114.58287      2820.2356    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4000
+Bond:   4   0.957199  0.000402435     7166
+Angle:  3   104.52    0.0317478       3583
+      4000   304.74383     -292789.83     -304465.92      1367.7431      1238.1354      25613.002      1.564112       24422.18       25106.002      27310.825      36.63184       31.73761       114.63849      2837.8044    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4100
+Bond:   4   0.957204  0.000289002     7166
+Angle:  3   104.52    0.0235449       3583
+      4100   304.74383     -292889.04     -304711.38      1383.4052      1368.7262      25993.32       1.5636061      24141.623      26844.038      26994.299      36.638261      31.713039      114.74432      2809.362     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4200
+Bond:   4   0.957204  0.000407314     7166
+Angle:  3   104.52    0.0362045       3583
+      4200   304.74383     -292794.49     -304541         1346.9118      1329.3918      25870.963      1.5611989      24084.682      26887.108      26641.099      36.646773      31.697557      114.95066      2831.9523    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4300
+Bond:   4   0.957199  0.000331794     7166
+Angle:  3   104.52    0.0324156       3583
+      4300   304.74383     -292859.98     -304600.74      1404.5615      1265.9925      25580.221      1.560516       24575.02       24639.931      27525.713      36.646827      31.678561      115.06976      2790.0457    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4400
+Bond:   4   0.957199  0.00051093      7166
+Angle:  3   104.52    0.0459812       3583
+      4400   304.74383     -292731.32     -304401.72      1332.0705      1268.1203      25955.284      1.5615584      24125.552      25841.792      27898.507      36.633759      31.655074      115.11931      2845.9247    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4500
+Bond:   4   0.957207  0.000489017     7166
+Angle:  3   104.52    0.0319827       3583
+      4500   304.74383     -292764.01     -304502.38      1370.9677      1297.1988      26355.305      1.5604132      24959.309      26473.122      27633.486      36.627201      31.656298      115.21998      2850.1279    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4600
+Bond:   4   0.957207  0.000370701     7166
+Angle:  3   104.52    0.0246849       3583
+      4600   304.74383     -292594.21     -304291.15      1333.7153      1293.0138      26321.14       1.5572692      24036.699      26229.227      28697.495      36.649574      31.683465      115.28318      2862.9994    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4700
+Bond:   4   0.957198  0.000212396     7166
+Angle:  3   104.52    0.017048        3583
+      4700   304.74383     -292859.83     -304522.14      1299.599       1292.4939      25322.314      1.5554168      23048.582      25224.184      27694.176      36.673349      31.70724       115.25916      2847.1867    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4800
+Bond:   4   0.957195  0.000486141     7166
+Angle:  3   104.52    0.0407045       3583
+      4800   304.74383     -292678.77     -304333.07      1322.6673      1261.4162      26681.393      1.558175       24632.959      27196.263      28214.957      36.658887      31.700888      115.12359      2846.3863    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 4900
+Bond:   4   0.957205  0.000302037     7166
+Angle:  3   104.52    0.0210504       3583
+      4900   304.74383     -292698.17     -304387.7       1366.9376      1252.3828      26643.376      1.5579772      24673.026      26413.275      28843.826      36.677279      31.717546      115.02003      2871.332     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5000
+Bond:   4   0.957197  0.000503612     7166
+Angle:  3   104.52    0.0375855       3583
+      5000   304.74383     -292790.16     -304430.65      1316.016       1254.2588      26003.964      1.5580004      23979.314      25827.333      28205.244      36.673195      31.718963      115.02598      2824.5756    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5100
+Bond:   4   0.957201  0.000329133     7166
+Angle:  3   104.52    0.0212783       3583
+      5100   304.74383     -292780.22     -304439.6       1305.4804      1283.6845      26270.447      1.558827       24762.197      26602.9        27446.244      36.652985      31.720557      115.02259      2825.6043    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5200
+Bond:   4   0.957201  0.000425807     7166
+Angle:  3   104.52    0.0209338       3583
+      5200   304.74383     -292888.39     -304585.71      1386.4349      1240.6763      25669.654      1.5579326      23784.225      25400.71       27824.027      36.644318      31.739892      115.04573      2812.4573    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5300
+Bond:   4   0.957196  0.000415965     7166
+Angle:  3   104.52    0.0210527       3583
+      5300   304.74383     -292943.7      -304552.75      1298.59        1240.2471      25195.507      1.5587185      23370.345      24550.312      27665.864      36.621207      31.737676      115.06832      2836.0641    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5400
+Bond:   4   0.957206  0.000551235     7166
+Angle:  3   104.52    0.0234081       3583
+      5400   304.74383     -292780.93     -304476.5       1358.1152      1267.2456      26650.854      1.5590802      24483.206      25634.672      29834.684      36.603321      31.726151      115.13965      2842.2773    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5500
+Bond:   4   0.957205  0.000617738     7166
+Angle:  3   104.52    0.0214144       3583
+      5500   304.74383     -292848.37     -304528.92      1341.7443      1268.5902      25097.885      1.5557244      23868.101      24467.752      26957.802      36.622259      31.73594       115.29278      2808.1004    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5600
+Bond:   4   0.957197  0.000713567     7166
+Angle:  3   104.52    0.0417949       3583
+      5600   304.74383     -292703.43     -304399.79      1372.7247      1253.4249      25741.08       1.5552418      22919.35       26704.468      27599.422      36.633483      31.718714      115.35583      2814.9841    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5700
+Bond:   4   0.957196  0.000230267     7166
+Angle:  3   104.52    0.0370938       3583
+      5700   304.74383     -292646.15     -304269.14      1350.9086      1201.8721      27119.628      1.5579558      25355.883      27353.913      28649.088      36.622335      31.683101      115.31941      2802.029     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5800
+Bond:   4   0.957202  0.000637434     7166
+Angle:  3   104.52    0.0669412       3583
+      5800   304.74383     -292887.61     -304557.63      1332.172       1267.6319      25410.761      1.5580364      23179.647      25763.227      27289.409      36.630904      31.677594      115.30651      2832.4208    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 5900
+Bond:   4   0.957203  0.000484649     7166
+Angle:  3   104.52    0.0266358       3583
+      5900   304.74383     -292860.48     -304600         1363.7848      1305.5285      25541.618      1.5571407      23998.378      26376.141      26250.336      36.627659      31.680985      115.3707       2854.0495    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6000
+Bond:   4   0.957206  0.000209313     7166
+Angle:  3   104.52    0.0208291       3583
+      6000   304.74383     -292789.96     -304537.42      1390.0464      1287.2041      26153.523      1.5550217      24533.884      26430.815      27495.87       36.626475      31.701675      115.45625      2835.0333    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6100
+Bond:   4   0.957205  0.000522473     7166
+Angle:  3   104.52    0.0393144       3583
+      6100   304.74383     -292873.11     -304533.58      1328.6058      1261.6559      24540.24       1.5525934      21585.036      25551.035      26484.649      36.636844      31.7318        115.49435      2807.5988    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6200
+Bond:   4   0.957195  0.000223116     7166
+Angle:  3   104.52    0.0190693       3583
+      6200   304.74383     -292754.8      -304460.81      1372.0076      1263.7981      26067.685      1.5534711      24113.685      26381.253      27708.118      36.640016      31.720712      115.45945      2837.7994    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6300
+Bond:   4   0.957201  0.000215839     7166
+Angle:  3   104.52    0.0184439       3583
+      6300   304.74383     -292862.05     -304574.21      1377.6828      1264.2701      26584.887      1.5551051      25373.616      27529.246      26851.798      36.643424      31.677847      115.48346      2814.3745    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6400
+Bond:   4   0.957207  0.000696564     7166
+Angle:  3   104.52    0.0186321       3583
+      6400   304.74383     -292708.77     -304402.62      1352.8192      1270.824       25948.926      1.5530185      23482.685      27403.792      26960.302      36.669291      31.660889      115.61894      2829.8042    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6500
+Bond:   4   0.957202  0.000362973     7166
+Angle:  3   104.52    0.0406073       3583
+      6500   304.74383     -292668.44     -304408.72      1392.3108      1277.7683      26102.053      1.5507904      23751.907      26779.973      27774.277      36.681823      31.673555      115.69922      2848.073     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6600
+Bond:   4   0.957201  0.000437416     7166
+Angle:  3   104.52    0.0433434       3583
+      6600   304.74383     -292720.77     -304339.87      1311.3406      1237.5504      26449.035      1.5501604      24435.947      26708.662      28202.497      36.680981      31.683396      115.71294      2860.5791    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6700
+Bond:   4   0.957202  0.000270727     7166
+Angle:  3   104.52    0.021224        3583
+      6700   304.74383     -292489.1      -304251.77      1350.6341      1341.8312      27326.195      1.5496648      25511.086      27208.801      29258.697      36.660872      31.702955      115.74199      2866.014     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6800
+Bond:   4   0.957198  0.000523756     7166
+Angle:  3   104.52    0.0282548       3583
+      6800   304.74383     -292764.38     -304410.38      1302.274       1273.5167      26699.327      1.5492963      25914.41       26138.521      28045.049      36.639379      31.717123      115.78569      2869.7837    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 6900
+Bond:   4   0.9572    0.000283042     7166
+Angle:  3   104.52    0.0224425       3583
+      6900   304.74383     -292652.02     -304433.4       1402.2547      1308.9184      27070.506      1.5503218      25990.345      27084.838      28136.335      36.623184      31.712085      115.77865      2837.337     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7000
+Bond:   4   0.957204  0.000251175     7166
+Angle:  3   104.52    0.0194613       3583
+      7000   304.74383     -292773.99     -304419.64      1354.5103      1220.9327      25873.492      1.5491346      23332.203      26532.463      27755.81       36.633345      31.718673      115.81118      2866.941     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7100
+Bond:   4   0.9572    0.000326983     7166
+Angle:  3   104.52    0.0190385       3583
+      7100   304.74383     -292580.04     -304319.81      1373.9324      1295.6227      26329.429      1.5486946      24886.551      26047.475      28054.262      36.634837      31.701632      115.90164      2890.9636    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7200
+Bond:   4   0.957195  0.000564035     7166
+Angle:  3   104.52    0.0548045       3583
+      7200   304.74383     -292587.26     -304192.46      1331.0769      1203.9143      26719.188      1.5510942      25273.844      27029.361      27854.359      36.623491      31.66409       115.89543      2837.8884    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7300
+Bond:   4   0.957201  0.000553753     7166
+Angle:  3   104.52    0.0444448       3583
+      7300   304.74383     -292465.27     -304065.29      1349.5287      1180.2797      26993.641      1.5514883      23958.21       26945.123      30077.59       36.627578      31.650655      115.90224      2838.3067    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7400
+Bond:   4   0.957199  0.000206493     7166
+Angle:  3   104.52    0.0197627       3583
+      7400   304.74383     -292680.45     -304419.84      1373.4396      1295.7394      25766.076      1.5507272      23952.523      24960.955      28384.75       36.627722      31.666687      115.89996      2760.8004    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7500
+Bond:   4   0.957201  0.000320945     7166
+Angle:  3   104.52    0.0210757       3583
+      7500   304.74383     -292604.09     -304273.84      1289.8002      1309.7357      26052.657      1.551519       23661.108      26587.486      27909.378      36.617387      31.678627      115.82984      2852.5837    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7600
+Bond:   4   0.957203  0.000209939     7166
+Angle:  3   104.52    0.0181171       3583
+      7600   304.74383     -292745.83     -304440.46      1362.4504      1261.9632      26197.484      1.55091        23893.149      26583.582      28115.721      36.624327      31.692689      115.80196      2842.1245    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7700
+Bond:   4   0.957199  0.000213265     7166
+Angle:  3   104.52    0.0195634       3583
+      7700   304.74383     -292313.87     -304003.9       1324.9815      1294.8399      26645.607      1.5503926      25079.697      25039.564      29817.56       36.643748      31.693324      115.77689      2808.6212    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7800
+Bond:   4   0.957198  0.000571143     7166
+Angle:  3   104.52    0.0431047       3583
+      7800   304.74383     -292738.62     -304360.94      1324.1019      1228.0065      26143.165      1.5512263      24114.154      25469.391      28845.951      36.650804      31.675967      115.75579      2838.5898    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 7900
+Bond:   4   0.957201  0.000302446     7166
+Angle:  3   104.52    0.0188928       3583
+      7900   304.74383     -292581.33     -304254.88      1356.3348      1247.0056      26771.291      1.5521786      25149.988      25925.998      29237.888      36.657559      31.656146      115.73586      2853.6138    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8000
+Bond:   4   0.957199  0.000229076     7166
+Angle:  3   104.52    0.0219973       3583
+      8000   304.74383     -292580.9      -304238.12      1319.9074      1267.1056      25920.772      1.5521983      22897.984      25215.206      29649.125      36.661265      31.652805      115.73491      2848.6985    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8100
+Bond:   4   0.957197  0.000423063     7166
+Angle:  3   104.52    0.0191793       3583
+      8100   304.74383     -292592.36     -304349.77      1375.5328      1311.6688      26413.817      1.553768       24491.161      26940.79       27809.5        36.638412      31.635939      115.75179      2821.4093    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8200
+Bond:   4   0.957202  0.000345773     7166
+Angle:  3   104.52    0.0271421       3583
+      8200   304.74383     -292540.89     -304218.91      1307.8247      1299.9895      26116.382      1.5543006      23564.055      25879.528      28905.563      36.627226      31.64724       115.70613      2804.0429    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8300
+Bond:   4   0.957203  0.000229578     7166
+Angle:  3   104.52    0.0213113       3583
+      8300   304.74383     -292756.19     -304486.21      1430.0943      1229.7204      25726.646      1.5527152      23656.674      25756.565      27766.699      36.635844      31.670453      115.71215      2815.8256    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8400
+Bond:   4   0.957199  0.000511092     7166
+Angle:  3   104.52    0.0302134       3583
+      8400   304.74383     -292475.96     -304122.53      1289.2928      1287.0709      25972.325      1.5523432      24391.94       25563.038      27961.998      36.644736      31.671823      115.70679      2847.5376    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8500
+Bond:   4   0.957199  0.000275046     7166
+Angle:  3   104.52    0.0409584       3583
+      8500   304.74383     -292716.55     -304412.53      1372.6626      1253.1086      26008.119      1.5526445      23865.147      24333.584      29825.625      36.643662      31.674189      115.67908      2833.3339    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8600
+Bond:   4   0.957199  0.000507385     7166
+Angle:  3   104.52    0.0312451       3583
+      8600   304.74383     -292599.37     -304270.22      1337.3583      1263.283       26018.612      1.5528935      23221.656      26019.179      28815.001      36.645312      31.66418       115.69188      2824.2062    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8700
+Bond:   4   0.957199  0.000222319     7166
+Angle:  3   104.52    0.0194609       3583
+      8700   304.74383     -292322.76     -304019.96      1345.6664      1281.3297      27407.943      1.5547573      25334.831      27099.124      29789.873      36.622334      31.668467      115.61005      2849.8809    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8800
+Bond:   4   0.957205  0.000208964     7166
+Angle:  3   104.52    0.017504        3583
+      8800   304.74383     -292516.61     -304163.78      1379.5138      1197.4407      26379.971      1.5527666      24431.408      25460.972      29247.533      36.629199      31.690721      115.6553       2856.7684    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 8900
+Bond:   4   0.957203  0.000293955     7166
+Angle:  3   104.52    0.0195304       3583
+      8900   304.74383     -292675.23     -304401.67      1363.126       1293.1065      26283.893      1.550951       25839.354      24659.862      28352.465      36.643612      31.686714      115.75978      2852.5861    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9000
+Bond:   4   0.957204  0.000523301     7166
+Angle:  3   104.52    0.022239        3583
+      9000   304.74383     -292585.84     -304183.81      1318.5915      1209.165       26160.071      1.5492536      24153.083      24988.334      29338.798      36.666989      31.685678      115.81651      2830.0259    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9100
+Bond:   4   0.957195  0.00020438      7166
+Angle:  3   104.52    0.0183905       3583
+      9100   304.74383     -292851.28     -304438.72      1319.4045      1197.8212      26232.219      1.5500524      24980.716      25491.068      28224.874      36.66967       31.681544      115.76347      2832.407     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9200
+Bond:   4   0.957198  0.000573533     7166
+Angle:  3   104.52    0.0273453       3583
+      9200   304.74383     -292734.01     -304380.65      1339.0232      1237.4036      27549.462      1.5513831      26138.541      26754.693      29755.151      36.65881       31.679085      115.70742      2865.9111    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9300
+Bond:   4   0.957199  0.000690363     7166
+Angle:  3   104.52    0.0412144       3583
+      9300   304.74383     -292508.23     -304187.25      1291.2234      1317.5909      27493.213      1.5527088      25647.105      26097.213      30735.322      36.64157       31.667971      115.70361      2857.2851    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9400
+Bond:   4   0.957203  0.000262957     7166
+Angle:  3   104.52    0.0212393       3583
+      9400   304.74383     -292656.14     -304483.12      1429.2117      1327.5576      27722.605      1.552105       26083.977      26851.707      30232.132      36.641274      31.663106      115.76734      2851.307     
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9500
+Bond:   4   0.957201  0.000551762     7166
+Angle:  3   104.52    0.031951        3583
+      9500   304.74383     -292647.86     -304214.93      1249.377       1247.4927      26568.359      1.5508595      24652.813      25630.041      29422.224      36.639406      31.675104      115.82234      2847.7029    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9600
+Bond:   4   0.957197  0.000223019     7166
+Angle:  3   104.52    0.0194513       3583
+      9600   304.74383     -292758.18     -304506.34      1429.6612      1248.2897      27765.272      1.5515849      27631.93       26372.605      29291.279      36.618163      31.68458       115.8007       2807.8482    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9700
+Bond:   4   0.957198  0.000860899     7166
+Angle:  3   104.52    0.0233128       3583
+      9700   304.74383     -292584.85     -304159         1265.7131      1238.2283      27563.667      1.5531117      26356.434      26310.889      30023.679      36.609196      31.688211      115.70194      2857.6728    
+WARNING: Inconsistent image flags (src/domain.cpp:815)
+SHAKE stats (type/ave/delta/count) on step 9800
+Bond:   4   0.957197  0.000504119     7166
+Angle:  3   104.52    0.0271923       3583
+      9800   304.74383     -292767.4      -304511.6       1387.8381      1286.1471      28352.923      1.5547461      28174.976      26377.517      30506.277      36.622066      31.676071      115.58397      2862.0787    
+SHAKE stats (type/ave/delta/count) on step 9900
+Bond:   4   0.957196  0.000304644     7166
+Angle:  3   104.52    0.0212736       3583
+WARNING: Too many warnings: 101 vs 100. All future warnings will be suppressed (src/thermo.cpp:472)
+      9900   304.74383     -292497.87     -304129.14      1296.8784      1264.188       29461.587      1.556117       28174.147      28234.292      31976.322      36.632879      31.659735      115.50763      2836.8099    
+SHAKE stats (type/ave/delta/count) on step 10000
+Bond:   4   0.957202  0.000209645     7166
+Angle:  3   104.52    0.0192742       3583
+     10000   304.74383     -292585.09     -304200.74      1317.0586      1228.3812      26144.89       1.5561732      24803.606      24714.056      28917.008      36.641859      31.649978      115.51075      2818.3546    
+Loop time of 3.63986 on 40 procs for 101 steps with 13569 atoms
+
+# --------- Writting the output coordinates and velocities ------------
+write_data     TI-rerun.dat pair ij
+System init for write_data ...
+PPPM initialization ...
+  using 12-bit tables for long-range coulomb (src/kspace.cpp:342)
+  G vector (1/distance) = 0.28448039
+  grid = 48 45 120
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.00035306813
+  estimated relative force accuracy = 1.0632542e-06
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 17670 6624
+Generated 45 of 45 mixed pair_coeff terms from arithmetic mixing rule
+Total wall time: 0:00:03

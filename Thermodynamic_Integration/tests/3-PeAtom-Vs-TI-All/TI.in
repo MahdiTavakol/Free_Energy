@@ -1,0 +1,107 @@
+# A Simple input file to solvate two silicas
+# Mahdi Tavakol (mahditavakol90@gmail.com)
+
+# ------------------------ INITIALIZATION ----------------------------
+units          real
+boundary       p p p
+atom_style     full
+
+# ------------------- Neighbor generation and skin ---------------------
+neigh_modify   delay 1
+neighbor       2 bin
+
+# -------------------------- VARIABLES --------------------------------
+variable       temp       equal 300
+variable       timestep   equal 1.0
+variable       tDamp      equal 100.0*${timestep}
+variable       press      equal 0.0
+variable       pDamp      equal 1000.0*${timestep}
+variable       R          equal 10000 #10000000              # 10ns
+variable       step       equal step
+variable       dumpFreq   equal 100                # 100ps
+variable       thermoFreq equal 100 #1000                  # 100ps
+variable       Nfreq      equal ${dumpFreq}
+variable       Nrepeat    equal 10
+variable       Nevery     equal 1000
+
+#######################################################################
+variable       TIscale    equal  0.50
+
+# --------------------- Forcefield ------------------------------------
+bond_style     harmonic
+angle_style    harmonic
+dihedral_style harmonic
+improper_style harmonic
+pair_style     lj/charmm/coul/long 10 12
+kspace_style   pppm 1.0e-6 
+
+# ----------------------- READ DATA FILE ------------------------------
+read_data      EQ-Res-30000000-0.50.dat
+
+#######################################################################
+group          HAp      type <= 5
+
+
+#######################################################################
+group          TI       type 2
+set            group    TI type/fraction 10 0.5 1234 #${RAND1}
+group          TI2      type 10
+variable       TI2count equal count(TI2)
+variable       q        atom "1.5 + v_TIscale*(1.8-1.5)" 
+set            type     10 charge v_q
+group          P        type 3
+variable       Pcount   equal count(P)
+variable       Pq       atom "1-(v_TIscale*v_TI2count*(1.8-1.5)/v_Pcount)"
+set            group    P charge v_Pq
+
+# ------------------ Thermodynamic Integration Compute ----------------
+
+compute        TI all thermo_integ 0.5 0.0  single 10 pair lj/charmm/coul/long 0.1299984877 0.015 charge 1.5 1.8 3
+#compute        TI all thermo_integ single 10 pair lj/charmm/coul/long 0.005
+#compute        TI all thermo_integ single 10 charge 0.001 3
+
+variable       dudepsilon equal c_TI[1]
+variable       dudcharge  equal c_TI[2]
+variable       dudlambda  equal c_TI[3]
+variable       uA         equal c_TI[4]
+variable       uB         equal c_TI[5]
+
+
+compute        pe1 HAp pe/atom pair kspace
+compute        pe2 all pe/atom pair kspace
+compute        peA HAp reduce sum c_pe1
+compute        peB all reduce sum c_pe2
+
+variable       cHAp  equal count(HAp)
+variable       cAll  equal count(all)
+
+variable       peHAp equal c_peA/v_cHAp
+variable       peAll equal c_peB/v_cAll
+
+# -------------------------- SETTINGS ---------------------------------
+#### Computes Required
+compute        mytemp all   temp
+thermo         ${thermoFreq}
+thermo_style   custom step temp etotal epair ebond eangle v_dudepsilon v_dudcharge v_dudlambda press density pxx pyy pzz lx ly lz spcpu
+restart        10000 restart1.bin restart2.bin
+
+shell          mkdir dump
+shell          cd dump
+
+# ------------------- Simulation Parameters ---------------------------
+timestep       1
+timestep       ${timestep}
+dump           2 all custom ${dumpFreq} dump.npt.lammpstrj mass id mol q type xs ys zs
+dump_modify    2 element O Ca P O H O H Na Cl Mg
+
+# -----------------------     -----------------------------------
+fix            3 all shake 0.0001 20 1000 b 4 a 3
+fix            1 all npt temp ${temp} ${temp} ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+fix            4 all print ${thermoFreq} "${step} ${dudepsilon} ${dudcharge} ${dudlambda} ${uA} ${uB}" screen no title "step dudepsilon dudcarge dudlambda uA uB" file compute-TI-info.dat
+fix            6 all print ${thermoFreq} "${step} ${peHAp} ${peAll}" screen no title "" file compute.dat
+#fix            5 all recenter NULL NULL INIT units box
+
+
+run            $R
+# --------- Writting the output coordinates and velocities ------------ 
+write_data     TI.dat pair ij

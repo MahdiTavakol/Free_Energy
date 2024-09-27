@@ -1,0 +1,93 @@
+# A Simple input file to solvate two silicas
+# Mahdi Tavakol (mahditavakol90@gmail.com)
+
+# ------------------------ INITIALIZATION ----------------------------
+units          real
+boundary       p p p
+atom_style     full
+
+# ------------------- Neighbor generation and skin ---------------------
+neigh_modify   delay 1
+neighbor       2 bin
+
+# -------------------------- VARIABLES --------------------------------
+variable       temp       equal 300
+variable       timestep   equal 1.0
+variable       tDamp      equal 100.0*${timestep}
+variable       press      equal 0.0
+variable       pDamp      equal 1000.0*${timestep}
+variable       R          equal 10000000              # 10ns
+variable       step       equal step
+variable       dumpFreq   equal 100 #100000                # 100ps
+variable       thermoFreq equal 100 #1000                  # 100ps
+variable       Nfreq      equal ${dumpFreq}
+variable       Nrepeat    equal 10
+variable       Nevery     equal 1000
+variable       time       equal time
+variable       totEnergy  equal etotal
+variable       kinEnergy  equal ke
+
+
+#######################################################################
+variable       TIscale    equal  0.48
+variable       TIindex    equal  0.50
+
+# --------------------- Forcefield ------------------------------------
+bond_style     harmonic
+angle_style    harmonic
+dihedral_style harmonic
+improper_style harmonic
+pair_style     lj/charmm/coul/long 10 12
+kspace_style   pppm 1.0e-6 
+
+# ----------------------- READ DATA FILE ------------------------------
+read_data      TI-0-48.dat
+
+# -------------------------- SETTINGS ---------------------------------
+#### Computes Required
+compute        mytemp all   temp
+thermo         ${thermoFreq}
+thermo_style   custom step temp etotal epair ebond eangle press density pxx pyy pzz lx ly lz spcpu
+restart        10000 restart1.bin restart2.bin
+
+
+
+#######################################################################
+group          TI2      type 10
+variable       TI2count equal count(TI2)
+variable       q        atom "1.5 + v_TIscale*(1.8-1.5)" 
+set            type     10 charge v_q
+group          P        type 3
+variable       Pcount   equal count(P)
+variable       Pq       atom "q - ( (v_TIscale - v_TIindex)*(1.8-1.5)*v_TI2count / v_Pcount)" 
+set            group    P charge v_Pq
+
+#######################################################################
+group          HAp      type <= 5  
+compute        peatom1 all pe/atom pair kspace
+compute        peatom2 HAp pe/atom pair kspace
+compute        pe1     all reduce sum c_peatom1
+compute        pe2     HAp reduce sum c_peatom2
+variable       count1  equal count(all)
+variable       count2  equal count(HAp)
+variable       peA     equal c_pe1/${count1}
+variable       peB     equal c_pe2/${count2}
+
+compute        peAll   all pe pair kspace
+variable       potEnergy equal c_peAll
+
+# ------------------- Simulation Parameters ---------------------------
+timestep       1
+timestep       ${timestep}
+
+
+# -----------------------     -----------------------------------
+fix            3 all shake 0.0001 20 1000 b 4 a 3
+fix            1 all npt temp ${temp} ${temp} ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+
+fix            6 all print ${dumpFreq} "${time} ${totEnergy} ${kinEnergy} ${potEnergy}" file Energies-time.txt screen no title ""
+fix            7 all print ${dumpFreq} "${time} ${peA} ${peB}"                          file Energies-time-FromCompute.txt screen no title ""
+
+rerun          ../dump/dump.npt.lammpstrj dump x y z format native
+# --------- Writting the output coordinates and velocities ------------ 
+write_data     TI-rerun.dat pair ij
