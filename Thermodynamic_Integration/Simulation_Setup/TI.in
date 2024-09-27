@@ -1,0 +1,98 @@
+# A Simple input file to solvate two silicas
+# Mahdi Tavakol (mahditavakol90@gmail.com)
+
+# ------------------------ INITIALIZATION ----------------------------
+units          real
+boundary       p p p
+atom_style     full
+
+# ------------------- Neighbor generation and skin ---------------------
+neigh_modify   delay 1
+neighbor       2 bin
+
+# -------------------------- VARIABLES --------------------------------
+variable       temp       equal 300
+variable       timestep   equal 1.0
+variable       tDamp      equal 100.0*${timestep}
+variable       press      equal 0.0
+variable       pDamp      equal 1000.0*${timestep}
+variable       R          equal 10000000              # 10ns
+variable       step       equal step
+variable       dumpFreq   equal 100000                # 100ps
+variable       TIFreq     equal 1000                  # 1ps
+variable       thermoFreq equal 1000                  # 1ps
+variable       Nfreq      equal ${dumpFreq}
+variable       Nrepeat    equal 10
+variable       Nevery     equal 1000
+
+#######################################################################
+variable       TIscale    equal  xXx
+
+# --------------------- Forcefield ------------------------------------
+bond_style     harmonic
+angle_style    harmonic
+dihedral_style harmonic
+improper_style harmonic
+pair_style     lj/charmm/coul/long 10 12
+kspace_style   pppm 1.0e-6 
+
+# ----------------------- READ DATA FILE ------------------------------
+read_data      EQ-Res-30000000-xXx.dat
+
+# -------------------------- SETTINGS ---------------------------------
+#### Computes Required
+compute        mytemp all   temp
+thermo         ${thermoFreq}
+thermo_style   custom step temp etotal epair ebond eangle press density pxx pyy pzz lx ly lz spcpu
+restart        10000 restart1.bin restart2.bin
+
+shell          mkdir dump
+shell          cd dump
+
+#######################################################################
+group          TI       type 2
+set            group    TI type/fraction 10 0.5 ${RAND1}
+group          TI2      type 10
+variable       TI2count equal count(TI2)
+variable       q        atom "1.5 + v_TIscale*(1.8-1.5)" 
+set            type     10 charge v_q
+group          P        type 3
+variable       Pcount   equal count(P)
+variable       Pq       atom "1-(v_TIscale*v_TI2count*(1.8-1.5)/v_Pcount)"
+set            group    P charge v_Pq
+
+####################### Compute TI ####################################
+group          HAp   type <= 5
+compute        TIHAp HAp thermo_integ 0.5 0.02  single 10 pair lj/charmm/coul/long 0.1299984877 0.015 charge 1.5 1.8 3
+compute        TIAll all thermo_integ 0.5 0.02  single 10 pair lj/charmm/coul/long 0.1299984877 0.015 charge 1.5 1.8 3
+
+variable       dudeps_HAp equal c_TIHAp[1]
+variable       dudq_HAp   equal c_TIHAp[2]
+variable       dudl_HAp   equal c_TIHAp[3]
+variable       uA_HAp     equal c_TIHAp[4]
+variable       uB_HAp     equal c_TIHAp[5]
+
+variable       dudeps_All equal c_TIAll[1]
+variable       dudq_All   equal c_TIAll[2]
+variable       dudl_All   equal c_TIAll[3]
+variable       uA_All     equal c_TIAll[4]
+variable       uB_All     equal c_TIAll[5]
+
+fix            4 all print ${TIFreq} "${step} ${dudeps_HAp} ${dudq_HAp} ${dudl_HAp} ${uA_HAp} ${uB_HAp}" screen no title "step dudeps_HAp dudq_HAp dudl_HAp uA_HAp uB_HAp" file compute-TI-HAp-info.dat
+fix            5 all print ${TIFreq} "${step} ${dudeps_All} ${dudq_All} ${dudl_All} ${uA_All} ${uB_All}" screen no title "step dudeps_All dudq_All dudl_All uA_All uB_All" file compute-TI-All-info.dat
+
+#######################################################################
+
+# ------------------- Simulation Parameters ---------------------------
+timestep       1
+timestep       ${timestep}
+dump           2 all custom ${dumpFreq} dump.npt.lammpstrj mass id mol q type xs ys zs
+dump_modify    2 element O Ca P O H O H Na Cl Mg
+
+# -----------------------     -----------------------------------
+fix            3 all shake 0.0001 20 1000 b 4 a 3
+fix            1 all npt temp ${temp} ${temp} ${tDamp} aniso ${press} ${press} ${pDamp} drag 2.0
+
+run            $R
+# --------- Writting the output coordinates and velocities ------------ 
+write_data     TI.dat pair ij
