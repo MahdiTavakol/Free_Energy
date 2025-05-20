@@ -1,11 +1,6 @@
-#include <iostream>
 #include <fstream>
-#include <sstream>
-#include <cmath>
-#include <algorithm>
 #include <vector>
 #include <string>
-#include <cstdlib> // For system()
 
 
 #define outputFreq 10000
@@ -13,6 +8,11 @@
 using std::vector;
 using std::string;
 using std::ofstream;
+
+enum class modeVal {
+	NORMAL = 0,
+	NUMBER_ANALYSIS = 1<<1
+};
 
 class JarCalculator
 {
@@ -37,6 +37,8 @@ public:
 
 
 private:
+	modeVal mode;
+	
 	int numFolders, numSims, numData, numDirs;
 
 	vector<string> folders;
@@ -54,6 +56,12 @@ private:
 	string logName;
 
 	ofstream logFile;
+
+	int numShuffles = 0;
+	vector<int> shuffles;
+	vector<double> gBarShuffle_means, gBarShuffle_stds, gBarShuffle_vars;
+    vector<double> gBarShuffle_vals;
+	string gBarShuffle_filename;
 	
 	void print_message(const string& message);
 	void readSims();
@@ -62,8 +70,11 @@ private:
 	void calcWork();
 	void calcJar();
 	void calcBar();
+    void calcBarShuffled();
 	void shiftJar();
 	void writeOutput();
 	void writeExceptions();
+	void shuffleIndexes();
+	void writeBarShuffled();
 
 };
